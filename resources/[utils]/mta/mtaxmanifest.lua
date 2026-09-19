@@ -1,5 +1,5 @@
 resource_name    = "mta"
-resource_version = "1.1.0"
+resource_version = "1.2.0"
 resource_author  = "MTAX:SA"
 
 resource_info = {
@@ -10,6 +10,7 @@ resource_info = {
 shared_files = {
     "shared/compat.lua",
     "shared/aliases.lua",
+    "shared/teams.lua",
 }
 
 client_files = {
@@ -24,5 +25,6 @@ server_files = {
     "shared/migration.lua",
     "server/compat.lua",
     "server/migration.lua",
+    "server/teams.lua",
     "server/bind_aliases.lua",
 }

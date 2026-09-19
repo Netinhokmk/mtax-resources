@@ -2,17 +2,11 @@
 
 
 addCommandHandler( 'register', function( cmd, account, password )
-    if not ( account and password ) then
-        return
-    end
     Server.registerAccount( false, account, password )
 end)
 
 
 addCommandHandler( 'login', function( cmd, account, password )
-    if not ( account and password ) then
-        return
-    end
     Server.logIn( false, account, password )
 end)
 

@@ -32,8 +32,19 @@ _TUNNEL.GenerateID = function()
      return setmetatable({}, { __index = IDGenerator })
  end
 
+_TUNNEL.IsServer = triggerClientEvent and true or false
+
 _TUNNEL.BindInterface = function(name, interface)
-     _TUNNEL.AddEvent(name..":".._TUNNEL.Identifier..":_mtax_tunnel", function(fname, args, rid, playerSource)
+     _TUNNEL.AddEvent(name..":".._TUNNEL.Identifier..":_mtax_tunnel", function(fname, args, rid)
+          local caller = _TUNNEL.IsServer and client or nil
+          if _TUNNEL.IsServer and not isElement(caller) then
+               return
+          end
+
+          if type(fname) ~= "string" or type(args) ~= "table" then
+               return
+          end
+
           local f = interface[fname]
           local rets = {}
 
@@ -41,9 +52,9 @@ _TUNNEL.BindInterface = function(name, interface)
                rets = {f(unpack(args, 1, table.maxn(args)))}
           end
 
-          if tonumber(rid) >= 0 then
-               if triggerClientEvent then
-                    triggerClientEvent(playerSource, name..":".._TUNNEL.Identifier..":b_mtax_tunnel", _TUNNEL.Resource, rid, rets)
+          if (tonumber(rid) or -1) >= 0 then
+               if _TUNNEL.IsServer then
+                    triggerClientEvent(caller, name..":".._TUNNEL.Identifier..":b_mtax_tunnel", _TUNNEL.Resource, rid, rets)
                else
                     triggerServerEvent(name..":".._TUNNEL.Identifier..":b_mtax_tunnel", _TUNNEL.Resource, rid, rets)
                end
@@ -61,19 +72,19 @@ _TUNNEL.TunnelResolve = function(TableValue, key)
 
      local fcall = function(callback, ...)
           local Args = {...}
-          local rID = Tid:gen()
-          Tcallback[tostring(rID)] = function(...)
-               if callback then
-                    callback(...)
-               end
+          local player = _TUNNEL.IsServer and Args[1] or nil
+          local rID = -1
+
+          if callback then
+               rID = Tid:gen()
+               Tcallback[tostring(rID)] = { fn = callback, player = player }
           end
 
-          if triggerClientEvent then
-               local player = Args[1]
+          if _TUNNEL.IsServer then
                Args = {unpack(Args, 2, table.maxn(Args))}
                triggerClientEvent(player, Tname..":".._TUNNEL.Identifier..":_mtax_tunnel", _TUNNEL.Resource, Fname, Args, rID)
           else
-               triggerServerEvent(Tname..":".._TUNNEL.Identifier..":_mtax_tunnel", _TUNNEL.Resource, Fname, Args, rID, localPlayer)
+               triggerServerEvent(Tname..":".._TUNNEL.Identifier..":_mtax_tunnel", _TUNNEL.Resource, Fname, Args, rID)
           end
      end
 
@@ -93,12 +104,21 @@ function _TUNNEL.GetInterface(name)
      })
 
      _TUNNEL.AddEvent(name..":".._TUNNEL.Identifier..":b_mtax_tunnel", function(rID, args)
-          local callback = Callbacks[tostring(rID)]
+          local pending = Callbacks[tostring(rID)]
 
-          if callback then
-               IDG:free(rID)
-               Callbacks[tostring(rID)] = nil
-               callback(unpack(args, 1, table.maxn(args)))
+          if not pending or type(args) ~= "table" then
+               return
+          end
+
+          if _TUNNEL.IsServer and pending.player ~= client then
+               return
+          end
+
+          IDG:free(rID)
+          Callbacks[tostring(rID)] = nil
+
+          if pending.fn then
+               pending.fn(unpack(args, 1, table.maxn(args)))
           end
      end)
 

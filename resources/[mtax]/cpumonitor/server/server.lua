@@ -2,22 +2,35 @@
 local watchers = { }
 
 
-Server.checkACL = function( )
+local function isConsoleAdmin( player )
+    if not isElement( player ) then
+        return false
+    end
     local acl = exports['acls']
     local acc = exports['accounts']
-    if acl:isObjectInACLGroup( 'user.'..acc:getAccountName( acc:getPlayerAccount( client ) ), acl:aclGetGroup( 'Console' ) ) then
-        return true
+    local account = acc:getAccountName( acc:getPlayerAccount( player ) )
+    if type( account ) ~= 'string' or account == '' then
+        return false
     end
-    return false
+    return acl:isObjectInACLGroup( 'user.'..account, acl:aclGetGroup( 'Console' ) ) == true
+end
+
+
+Server.checkACL = function( )
+    return isConsoleAdmin( client )
 end
 
 
 Server.setStatsVisible = function( visible )
     if isTimer( watchers[ client ] ) then
         killTimer( watchers[ client ] )
-        watchers[ client ] = nil
     end
+    watchers[ client ] = nil
+
     if visible then
+        if not isConsoleAdmin( client ) then
+            return false
+        end
         watchers[ client ] = setTimer( function( player )
             if not isElement( player ) then
                 return
@@ -26,6 +39,7 @@ Server.setStatsVisible = function( visible )
             Client.stats( false, player, rows_server )
         end, 1000, 0, client )
     end
+    return true
 end
 
 

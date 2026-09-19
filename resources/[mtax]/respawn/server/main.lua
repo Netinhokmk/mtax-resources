@@ -1,3 +1,5 @@
+addEvent( 'onPlayerLogin', false )
+
 addEventHandler( 'onPlayerLogin', root, function( )
     local source = source
     setElementHealth(source, 100)

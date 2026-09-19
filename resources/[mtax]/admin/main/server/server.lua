@@ -24,25 +24,46 @@ Server.saveBind = function( bind, cmd )
 end
 
 
-Server.fly = function( )
+local function isConsoleAdmin( player )
+    if not isElement( player ) then
+        return false
+    end
     local acl = exports['acls']
     local acc = exports['accounts']
-    if acl:isObjectInACLGroup( 'user.'..acc:getAccountName( acc:getPlayerAccount( client ) ), acl:aclGetGroup( 'Console' ) ) then
-        return true
+    local account = acc:getAccountName( acc:getPlayerAccount( player ) )
+    if type( account ) ~= 'string' or account == '' then
+        return false
     end
-    return false
+    return acl:isObjectInACLGroup( 'user.'..account, acl:aclGetGroup( 'Console' ) ) == true
+end
+
+
+Server.fly = function( )
+    return isConsoleAdmin( client )
 end
 
 
 Server.alpha = function( alpha )
+    if not isConsoleAdmin( client ) then
+        return false
+    end
+
+    alpha = tonumber( alpha )
+    if not alpha then
+        return false
+    end
+    alpha = math.max( 0, math.min( 255, math.floor( alpha ) ) )
+
+    local hidden = alpha <= 0
     setElementAlpha( client, alpha )
-    setElementCollisionsEnabled( client, alpha <= 0 and false or true )
-    setElementFrozen( client, alpha <= 0 and true or false )
-    setPlayerAnticheatEnabled( client, alpha <= 0 and false or true, 'movement' )
+    setElementCollisionsEnabled( client, not hidden )
+    setElementFrozen( client, hidden )
+    setPlayerAnticheatEnabled( client, not hidden, 'movement' )
+    return true
 end
 
 
-addEvent( 'onPlayerLogin', true )
+addEvent( 'onPlayerLogin', false )
 addEventHandler( 'onPlayerLogin', root, function( player, account )
     local result = dbPoll( dbQuery( connection, 'SELECT * FROM bindName WHERE account = ?', account ), -1 )
     if result and #result > 0 then

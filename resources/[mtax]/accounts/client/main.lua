@@ -32,8 +32,11 @@ end)
 local cachedMoney = 0
 
 getPlayerMoney = function( element )
+    if element ~= nil and element ~= localPlayer then
+        return false
+    end
     Server.getPlayerMoney( function( money )
         cachedMoney = tonumber( money ) or 0
-    end, element )
+    end )
     return cachedMoney
 end

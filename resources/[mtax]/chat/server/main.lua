@@ -597,14 +597,43 @@ Server.send = function(TypeId, Text, Sticker, Target)
     Main:Say(client, tostring(TypeId or ""), Text, Sticker, Target)
 end
 
+local CommandRate = { }
+
+local function commandAllowed(Player)
+    local Now = getTickCount()
+    local State = CommandRate[Player]
+
+    if not State or Now - State.Since >= Config.CommandFlood.Window then
+        CommandRate[Player] = { Since = Now, Hits = 1 }
+        return true
+    end
+
+    State.Hits = State.Hits + 1
+    return State.Hits <= Config.CommandFlood.Burst
+end
+
 Server.command = function(Name, Args)
     local Player = client
     if not Main:IsPlayer(Player) or type(Name) ~= "string" or Name == "" then
         return false
     end
 
-    return executeCommandHandler(Name, Player, type(Args) == "string" and Args or "") == true
+    Args = type(Args) == "string" and Args or ""
+    if #Name + #Args + 1 > Config.CommandFlood.LineCap then
+        return false
+    end
+
+    if not commandAllowed(Player) then
+        Main:Notice(Player, Config.Text.Flooding)
+        return true
+    end
+
+    return executeCommandHandler(Name, Player, Args) == true
 end
+
+addEventHandler("onPlayerQuit", root, function()
+    CommandRate[source] = nil
+end)
 
 --- Exports
 

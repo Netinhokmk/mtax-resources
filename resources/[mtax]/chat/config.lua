@@ -21,6 +21,12 @@ Config.Flood = {
     Cooldown = 4000,
 }
 
+Config.CommandFlood = {
+    Burst   = 8,
+    Window  = 4000,
+    LineCap = 255,
+}
+
 --- Labels
 
 Config.ThreeD = {

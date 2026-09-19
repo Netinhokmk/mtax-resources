@@ -15,8 +15,8 @@ else
 end
 
 
-addEvent( 'onPlayerLogin', true )
-addEvent( 'onPlayerLogout', true )
+addEvent( 'onPlayerLogin', false )
+addEvent( 'onPlayerLogout', false )
 
 
 -- Event
@@ -456,8 +456,8 @@ function getPlayerMoney( player )
 end
 
 
-Server.getPlayerMoney = function( element )
-    return getPlayerMoney( element )
+Server.getPlayerMoney = function( )
+    return getPlayerMoney( client )
 end
 
 

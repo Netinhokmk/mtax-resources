@@ -8,6 +8,7 @@ resource_info = {
 }
 
 shared_files = {
+    ":mta/shared/warn.lua",
     ":mta/shared/teams.lua",
 }
 

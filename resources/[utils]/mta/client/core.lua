@@ -30,7 +30,7 @@ local REQUIRED = {
     "createElement", "destroyElement", "isElement", "getElementID",
     "getElementType", "setElementParent", "getRootElement", "getResourceRootElement",
     "getThisResource",
-    "addEvent", "addEventHandler", "removeEventHandler", "triggerEvent",
+    "addEvent", "addEventHandler", "removeEventHandler", "triggerEvent", "cancelEvent",
     "getScreenSize", "isCursorShowing", "getCursorPosition", "getKeyState",
     "dxDrawRectangle", "dxDrawText", "dxDrawImage", "dxDrawImageSection",
     "dxGetTextWidth", "dxGetFontHeight", "dxCreateFont", "dxCreateTexture",
@@ -65,6 +65,7 @@ local nAddEvent             = addEvent
 local nAddEventHandler      = addEventHandler
 local nRemoveEventHandler   = removeEventHandler
 local nTriggerEvent         = triggerEvent
+local nCancelEvent          = cancelEvent
 local nGetScreenSize        = getScreenSize
 local nIsCursorShowing      = isCursorShowing
 local nGetCursorPosition    = getCursorPosition
@@ -97,6 +98,7 @@ local RESERVED = {
     -- core.lua
     "guiCreateFont", "guiSetInputEnabled", "guiGetInputEnabled",
     "guiSetInputMode", "guiGetInputMode", "guiGetCursorType",
+    "guiSetClickDownEnabled", "guiGetClickDownEnabled",
     -- widgets.lua: generic
     "guiSetVisible", "guiGetVisible", "guiSetEnabled", "guiGetEnabled",
     "guiSetAlpha", "guiGetAlpha", "guiSetPosition", "guiGetPosition",
@@ -858,12 +860,13 @@ local GUI_EVENTS = {
     "onClientGUISize",              -- (none)
     "onClientGUIFocus",             -- (none)
     "onClientGUIBlur",              -- (none)
-    -- MTA fires these three ON GUI ELEMENTS as well (they are the GUI-scoped
-    -- variants declared at CClientGame.cpp:2737-2739 and fired from
-    -- CClientGame::OnMouseMove/OnMouseEnters/OnMouseLeaves).
+    -- MTA fires these four ON GUI ELEMENTS as well (they are the GUI-scoped
+    -- variants declared at CClientGame.cpp:2737-2741 and fired from
+    -- CClientGame::OnMouseMove/OnMouseEnters/OnMouseLeaves/OnMouseWheel).
     "onClientMouseEnter",           -- screenX, screenY
     "onClientMouseLeave",           -- screenX, screenY
     "onClientMouseMove",            -- screenX, screenY
+    "onClientMouseWheel",           -- wheelChange: +1 up, -1 down (CGUI_Impl.cpp:348-351)
 }
 M.GUI_EVENTS = GUI_EVENTS
 
@@ -875,7 +878,7 @@ M.GUI_EVENTS = GUI_EVENTS
 -- The converter must not "fix" MTA's own dead events.
 
 for i = 1, #GUI_EVENTS do
-    nAddEvent(GUI_EVENTS[i], true)
+    nAddEvent(GUI_EVENTS[i], false)
 end
 
 local function fire(eventName, w, ...)
@@ -1087,6 +1090,29 @@ local function capture(w, mode)
 end
 M.capture = capture
 
+local MULTICLICK_BOX = 6
+local SINGLECLICK_MS = 200
+local MULTICLICK_MS  = 330
+
+M.clickDownEnabled = false
+
+local clickTrackers = {}
+
+local function trackerFor(button)
+    local t = clickTrackers[button]
+    if t == nil then
+        t = { count = 0, tick = 0, areaX = nil, areaY = nil, target = nil }
+        clickTrackers[button] = t
+    end
+    return t
+end
+
+local function inClickArea(t, x, y)
+    return t.areaX ~= nil
+        and abs(x - t.areaX) <= MULTICLICK_BOX
+        and abs(y - t.areaY) <= MULTICLICK_BOX
+end
+
 local function onMouseDown(button, x, y)
     local hit = hitTest(x, y)
 
@@ -1103,6 +1129,17 @@ local function onMouseDown(button, x, y)
     M.pressedButton = button
     M.pressX, M.pressY = x, y
 
+    local t = trackerFor(button)
+    local now = nGetTickCount()
+    t.count = t.count + 1
+    if now - t.tick > MULTICLICK_MS or not inClickArea(t, x, y)
+       or t.target ~= hit or t.count > 3 then
+        t.count = 1
+        t.areaX, t.areaY = x, y
+        t.target = hit
+    end
+    t.tick = now
+
     if hit == nil then
         blur()
         return
@@ -1115,20 +1152,27 @@ local function onMouseDown(button, x, y)
     if button == "left" then bringToFront(hit) end
 
     local cls = classes[hit.type]
+
+    if t.count == 2 then
+        if cls and cls.onDoubleClick then cls.onDoubleClick(hit, button, x, y) end
+        fire("onClientGUIDoubleClick", hit, button, "up", x, y)
+        return
+    end
+    if t.count >= 3 then return end
+
     if cls and cls.onMouseDown then cls.onMouseDown(hit, button, x, y) end
 
     fire("onClientGUIMouseDown", hit, button, x, y)
-    fire("onClientGUIClick", hit, button, "down", x, y)
+    if M.clickDownEnabled then
+        fire("onClientGUIClick", hit, button, "down", x, y)
+    end
 end
-
-local CLICK_TOLERANCE = 6
 
 local function onMouseUp(button, x, y)
     local cap = M.captured
     if cap then releaseCapture() end
 
     local target = M.pressed
-    local pressX, pressY = M.pressX, M.pressY
     M.pressed = nil
     M.pressedButton = nil
     M.pressX, M.pressY = nil, nil
@@ -1143,11 +1187,12 @@ local function onMouseUp(button, x, y)
 
     fire("onClientGUIMouseUp", target, button, x, y)
 
-    local within = pressX == nil
-        or (abs(x - pressX) <= CLICK_TOLERANCE and abs(y - pressY) <= CLICK_TOLERANCE)
-    if within then
-        fire("onClientGUIClick", target, button, "up", x, y)
-    end
+    local t = trackerFor(button)
+    if nGetTickCount() - t.tick > SINGLECLICK_MS then return end
+    if not inClickArea(t, x, y) then return end
+    if hitTest(x, y) ~= t.target then return end
+
+    fire("onClientGUIClick", target, button, "up", x, y)
 end
 
 local function onClick(button, state, absX, absY)
@@ -1162,21 +1207,13 @@ local function onClick(button, state, absX, absY)
     end
 end
 
-local function onDoubleClick(button, absX, absY)
-    if ty(button) ~= "string" then return end
-    local x, y = num(absX, M.cursorX), num(absY, M.cursorY)
-    if x < 0 then return end
-    local hit = hitTest(x, y)
-    if hit == nil or not effectivelyEnabled(hit) then return end
-    local cls = classes[hit.type]
-    if cls and cls.onDoubleClick then cls.onDoubleClick(hit, button, x, y) end
-    fire("onClientGUIDoubleClick", hit, button, "up", x, y)
-end
 
 local function routeWheel(delta)
     if not nIsCursorShowing() then return end
     local x, y = M.cursorX, M.cursorY
     if x < 0 then return end
+
+    fire("onClientMouseWheel", hitTest(x, y), -delta)
 
     local pop = M.popup
     if pop and not pop.destroyed then
@@ -1210,8 +1247,36 @@ local function ctrlHeld()
 end
 M.ctrlHeld = ctrlHeld
 
+local inputEnabled = false
+local inputMode = "allow_binds"
+local VALID_INPUT_MODES = {
+    allow_binds = true, no_binds = true, no_binds_when_editing = true,
+}
+
+local IGNORED_BY_GUI = {
+    lalt = true, ralt = true, pause = true, scroll = true,
+    pgup = true, pgdn = true, insert = true,
+}
+for i = 1, 12 do IGNORED_BY_GUI["F" .. i] = true end
+IGNORED_BY_GUI.F8 = nil
+
+local function guiInputEnabled()
+    if inputMode == "no_binds" then return true end
+    if inputMode ~= "no_binds_when_editing" then return false end
+    local f = M.focused
+    if f == nil or f.destroyed then return false end
+    if f.type ~= "gui-edit" and f.type ~= "gui-memo" then return false end
+    if not effectivelyEnabled(f) then return false end
+    return f.readOnly ~= true
+end
+M.guiInputEnabled = guiInputEnabled
+
 local function onKey(key, down)
     if ty(key) ~= "string" then return end
+
+    if down and not IGNORED_BY_GUI[key] and guiInputEnabled() then
+        nCancelEvent()
+    end
 
     if down and key == "mouse_wheel_up" then    routeWheel(-1) return end
     if down and key == "mouse_wheel_down" then  routeWheel(1)  return end
@@ -1256,24 +1321,15 @@ M.setClipboard = function(text)
     return ok and r or false
 end
 
-local inputEnabled = false
-local inputMode = "allow_binds"
-local VALID_INPUT_MODES = {
-    allow_binds = true, no_binds = true, no_binds_when_editing = true,
-}
-
 local INPUT_MODE_WARNING =
-    "guiSetInputMode / guiSetInputEnabled cannot do on MTAX what they do on MTA. " ..
-    "MTA suppresses key binds while a GUI edit box has focus; MTAX dispatches every " ..
-    "key to bindKey and onClientKey before any Lua handler can object, and cancelEvent " ..
-    "on onClientKey is IGNORED (research/events.json: cancelHonoured = \"ignored\"). " ..
-    "The shim only records the mode so guiGetInputMode round-trips. Typing into a " ..
-    "shim edit box WILL still trigger the player's binds. If you need the game to stop " ..
-    "responding, call toggleAllControls(false) yourself while the panel is open."
+    "guiSetInputMode / guiSetInputEnabled now suppress key binds while the GUI owns the " ..
+    "keyboard, as MTA does. What they do NOT suppress is the game itself: on MTA the GTA " ..
+    "control binds die with the script binds, here the game keeps reading the keyboard. " ..
+    "Call showCursor(true, true) -- or toggleAllControls(false) -- while the panel is open " ..
+    "if the player must stop moving."
 
 define("guiSetInputEnabled", function(enabled)
     warnOnce("inputmode", INPUT_MODE_WARNING)
-    unsupported("guiSetInputEnabled", "recorded but not enforced; MTAX cannot suppress binds")
     inputEnabled = truthy(enabled)
     inputMode = inputEnabled and "no_binds" or "allow_binds"
     return true
@@ -1285,7 +1341,6 @@ end)
 
 define("guiSetInputMode", function(mode)
     warnOnce("inputmode", INPUT_MODE_WARNING)
-    unsupported("guiSetInputMode", "recorded but not enforced; MTAX cannot suppress binds")
     if ty(mode) ~= "string" or not VALID_INPUT_MODES[mode] then return false end
     inputMode = mode
     inputEnabled = (mode ~= "allow_binds")
@@ -1294,6 +1349,15 @@ end)
 
 define("guiGetInputMode", function()
     return inputMode
+end)
+
+define("guiSetClickDownEnabled", function(enabled)
+    M.clickDownEnabled = truthy(enabled)
+    return true
+end)
+
+define("guiGetClickDownEnabled", function()
+    return M.clickDownEnabled == true
 end)
 
 local cursorTypeNames = {
@@ -1316,7 +1380,6 @@ end)
 addHandler("onClientRender", root, renderPass)
 addHandler("onClientCursorMove", root, onCursorMove)
 addHandler("onClientClick", root, onClick)
-addHandler("onClientDoubleClick", root, onDoubleClick)
 addHandler("onClientKey", root, onKey)
 addHandler("onClientCharacter", root, onCharacter)
 addHandler("onClientPaste", root, onPaste)

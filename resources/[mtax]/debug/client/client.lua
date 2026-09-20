@@ -9,6 +9,7 @@ local debugLevel = {
 Toggle = function( )
     visible = not visible
     sendNuiMessage({ action = 'toggle', data = visible })
+    Server.setDebugVisible( false, visible )
 end
 
 

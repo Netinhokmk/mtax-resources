@@ -1,10 +1,21 @@
 _G.Accounts = {
     logged = { },
     guests = { },
+    records = { },
 }
 
 local connection = dbConnect( 'sqlite', 'accounts.db' )
-local PASSWORD_KEY = 'mtax-accounts-secret-key'
+
+local LEGACY_PASSWORD_KEY = 'mtax-accounts-secret-key'
+local MIGRATION_PARKED = '$argon2id$parked'
+
+local NAME_MAX_LENGTH = Config.NameMaxLength
+local PASSWORD_MAX_LENGTH = Config.PasswordMaxLength
+local LOGIN_RATE = Config.LoginRate
+local REGISTER_RATE = Config.RegisterRate
+local ATTEMPT_TTL = Config.AttemptTTL
+local ATTEMPT_SWEEP = Config.AttemptSweep
+local MIGRATION_INTERVAL = Config.MigrationInterval
 
 if connection then
     outputDebugString( '[admin] - Database ' .. getResourceName( getThisResource( ) ) .. ' connected successfully', 4, 142, 124, 195)
@@ -15,42 +26,242 @@ else
 end
 
 
-addEvent( 'onPlayerLogin', true )
-addEvent( 'onPlayerLogout', true )
+addEvent( 'onPlayerLogin', false )
+addEvent( 'onPlayerLogout', false )
+
+
+local function isPlayerElement( element )
+    return isElement( element ) and getElementType( element ) == 'player'
+end
+
+local function notify( player, text, color )
+    if not Config.Chat or not isPlayerElement( player ) or type( text ) ~= 'string' then
+        return false
+    end
+
+    local chat = getResourceFromName( 'chat' )
+    if not chat or getResourceState( chat ) ~= 'running' then
+        return false
+    end
+
+    color = color or Config.Color.Info
+    return exports['chat']:outputChatBox( text, player, color[1], color[2], color[3] ) == true
+end
+
+local function isReservedName( name )
+    if type( name ) ~= 'string' then
+        return false
+    end
+
+    local lowered = name:lower( )
+    for _, reserved in ipairs( Config.ReservedNames ) do
+        if lowered == reserved:lower( ) then
+            return true
+        end
+    end
+
+    return false
+end
+
+
+local Attempts = { }
+
+local function attemptIdentity( player )
+    local serial = getPlayerSerial( player )
+    if type( serial ) == 'string' and serial ~= '' then
+        return serial
+    end
+
+    local ip = getPlayerIP( player )
+    if type( ip ) == 'string' and ip ~= '' then
+        return ip
+    end
+
+    return false
+end
+
+local function allowAttempt( player, kind, rule )
+    local identity = attemptIdentity( player )
+    if not identity then
+        return false
+    end
+
+    local now = getTickCount( )
+    local bucket = Attempts[identity]
+
+    if not bucket then
+        bucket = { }
+        Attempts[identity] = bucket
+    end
+
+    local state = bucket[kind]
+    if not state then
+        state = { since = now, hits = 0, last = 0, blockedUntil = 0 }
+        bucket[kind] = state
+    end
+
+    if now < state.blockedUntil then
+        return false
+    end
+
+    if now - state.last < rule.Interval then
+        return false
+    end
+
+    if now - state.since > rule.Window then
+        state.since = now
+        state.hits = 0
+    end
+
+    state.hits = state.hits + 1
+    state.last = now
+
+    if state.hits > rule.Burst then
+        state.blockedUntil = now + rule.Cooldown
+        state.hits = 0
+        state.since = now
+        return false
+    end
+
+    return true
+end
+
+local function clearAttempts( player, kind )
+    local identity = attemptIdentity( player )
+    local bucket = identity and Attempts[identity]
+    if bucket then
+        bucket[kind] = nil
+    end
+end
+
+setTimer( function( )
+    local now = getTickCount( )
+    for identity, bucket in pairs( Attempts ) do
+        local alive = false
+        for kind, state in pairs( bucket ) do
+            if now < state.blockedUntil or now - state.last < ATTEMPT_TTL then
+                alive = true
+            else
+                bucket[kind] = nil
+            end
+        end
+        if not alive then
+            Attempts[identity] = nil
+        end
+    end
+end, ATTEMPT_SWEEP, 0 )
 
 
 -- Event
 
 
 Server.registerAccount = function( name, password )
-    local check = getAccount( name, password )
-    if check then
-        return
+    local player = client
+    if not isPlayerElement( player ) then
+        return false
     end
-    addAccount( name, password )
+
+    if type( name ) ~= 'string' or name == '' or type( password ) ~= 'string' or password == '' then
+        notify( player, Config.Text.UsageRegister )
+        return false
+    end
+
+    if #name > NAME_MAX_LENGTH then
+        notify( player, string.format( Config.Text.NameTooLong, NAME_MAX_LENGTH ), Config.Color.Bad )
+        return false
+    end
+
+    if #password > PASSWORD_MAX_LENGTH then
+        notify( player, string.format( Config.Text.PasswordTooLong, PASSWORD_MAX_LENGTH ), Config.Color.Bad )
+        return false
+    end
+
+    if isReservedName( name ) then
+        notify( player, Config.Text.NameReserved, Config.Color.Bad )
+        return false
+    end
+
+    if not allowAttempt( player, 'register', REGISTER_RATE ) then
+        notify( player, Config.Text.TooManyTries, Config.Color.Bad )
+        return false
+    end
+
+    if getAccount( name ) then
+        notify( player, Config.Text.NameTaken, Config.Color.Bad )
+        return false
+    end
+
+    if not addAccount( name, password ) then
+        notify( player, Config.Text.RegisterFailed, Config.Color.Bad )
+        return false
+    end
+
+    notify( player, string.format( Config.Text.Registered, name ), Config.Color.Good )
+    return true
 end
 
 
 Server.logIn = function( name, password )
-    local check = getAccount( name, password )
-    if not check then
-        return
+    local player = client
+    if not isPlayerElement( player ) then
+        return false
     end
-    logIn( client, check, password )
+
+    if type( name ) ~= 'string' or name == '' or type( password ) ~= 'string' or password == '' then
+        notify( player, Config.Text.UsageLogin )
+        return false
+    end
+
+    if _G.Accounts.logged[player] then
+        notify( player, Config.Text.AlreadyLoggedIn, Config.Color.Bad )
+        return false
+    end
+
+    if not allowAttempt( player, 'login', LOGIN_RATE ) then
+        notify( player, Config.Text.TooManyTries, Config.Color.Bad )
+        return false
+    end
+
+    local account = getAccount( name )
+    if not account then
+        notify( player, Config.Text.LoginFailed, Config.Color.Bad )
+        return false
+    end
+
+    if getAccountPlayer( account ) then
+        notify( player, Config.Text.AccountInUse, Config.Color.Bad )
+        return false
+    end
+
+    if not logIn( player, account, password ) then
+        notify( player, Config.Text.LoginFailed, Config.Color.Bad )
+        return false
+    end
+
+    clearAttempts( player, 'login' )
+    notify( player, string.format( Config.Text.LoggedIn, getAccountName( account ) ), Config.Color.Good )
+    return true
 end
 
 
 Server.logOut = function( )
-    logOut( client )
+    local player = client
+    if not isPlayerElement( player ) then
+        return false
+    end
+
+    if not logOut( player ) then
+        notify( player, Config.Text.NotLoggedIn, Config.Color.Bad )
+        return false
+    end
+
+    notify( player, Config.Text.LoggedOut )
+    return true
 end
 
 
 -- Functions
 
-
-local function isPlayerElement( element )
-    return isElement( element ) and getElementType( element ) == 'player'
-end
 
 local function isAccountTable( account )
     return type( account ) == 'table' and ( account.guest == true or type( account.id ) == 'number' )
@@ -67,6 +278,31 @@ local function decodeData( str )
     return fromJSON( str ) or { }
 end
 
+local function adopt( row )
+    if type( row ) ~= 'table' or type( row.id ) ~= 'number' then
+        return false
+    end
+
+    local record = _G.Accounts.records[row.id]
+    if not record then
+        return row
+    end
+
+    for key, value in pairs( row ) do
+        record[key] = value
+    end
+    return record
+end
+
+local function releaseRecord( id )
+    for _, logged in pairs( _G.Accounts.logged ) do
+        if logged.id == id then
+            return
+        end
+    end
+    _G.Accounts.records[id] = nil
+end
+
 local function findAccountByName( name, caseSensitive )
     if type( name ) ~= 'string' or name == '' then
         return false
@@ -77,7 +313,7 @@ local function findAccountByName( name, caseSensitive )
         or 'SELECT * FROM accounts WHERE LOWER( account ) = LOWER( ? ) LIMIT 1'
 
     local result = dbPoll( dbQuery( connection, sql, name ), -1 )
-    return result and result[1] or false
+    return adopt( result and result[1] )
 end
 
 local function getGuestAccount( player )
@@ -85,10 +321,26 @@ local function getGuestAccount( player )
         _G.Accounts.guests[player] = {
             guest = true,
             account = 'guest',
+            player = player,
             data = { },
         }
     end
     return _G.Accounts.guests[player]
+end
+
+local function resolve( account )
+    if not isAccountTable( account ) then
+        return false
+    end
+
+    if account.guest then
+        if isPlayerElement( account.player ) then
+            return getGuestAccount( account.player )
+        end
+        return account
+    end
+
+    return _G.Accounts.records[account.id] or account
 end
 
 local function isValidDataValue( value )
@@ -96,29 +348,110 @@ local function isValidDataValue( value )
     return valueType == 'string' or valueType == 'number' or valueType == 'boolean' or valueType == 'nil'
 end
 
-local function encodePassword( password )
-    local encrypted = encodeString( 'tea', password, { key = PASSWORD_KEY } )
-    return encodeString( 'base64', encrypted )
+local function hashPassword( password )
+    local hashed = passwordHash( password )
+    return type( hashed ) == 'string' and hashed or false
 end
 
-local function decodePassword( stored )
+local function isHashedPassword( stored )
+    return type( stored ) == 'string' and stored:sub( 1, 7 ) == '$argon2'
+end
+
+local function decodeLegacyPassword( stored )
+    if type( stored ) ~= 'string' or stored == '' then
+        return false
+    end
+
     local encrypted = decodeString( 'base64', stored )
-    local decrypted = decodeString( 'tea', encrypted, { key = PASSWORD_KEY } )
-    return decrypted and ( decrypted:gsub( '%z+$', '' ) ) or decrypted
+    if type( encrypted ) ~= 'string' then
+        return false
+    end
+
+    local decrypted = decodeString( 'tea', encrypted, { key = LEGACY_PASSWORD_KEY } )
+    if type( decrypted ) ~= 'string' then
+        return false
+    end
+
+    return ( decrypted:gsub( '%z+$', '' ) )
+end
+
+local function verifyPassword( account, password )
+    if type( password ) ~= 'string' or password == '' then
+        return false
+    end
+
+    local stored = account.password
+
+    if isHashedPassword( stored ) then
+        return passwordVerify( password, stored ) == true
+    end
+
+    if decodeLegacyPassword( stored ) ~= password then
+        return false
+    end
+
+    local upgraded = hashPassword( password )
+    if upgraded then
+        dbExec( connection, 'UPDATE accounts SET password = ? WHERE id = ?', upgraded, account.id )
+        account.password = upgraded
+    end
+
+    return true
+end
+
+local migrationTimer
+
+local function migrateLegacyPassword( )
+    local pending = dbPoll( dbQuery( connection,
+        'SELECT id, password FROM accounts WHERE password NOT LIKE ? LIMIT 1', '$argon2%' ), -1 )
+    local row = pending and pending[1]
+
+    if not row then
+        if isTimer( migrationTimer ) then
+            killTimer( migrationTimer )
+        end
+        migrationTimer = nil
+        return
+    end
+
+    local plain = decodeLegacyPassword( row.password )
+    local hashed = type( plain ) == 'string' and hashPassword( plain ) or false
+
+    if not hashed then
+        outputDebugString( 'Account ' .. tostring( row.id ) .. ' has an unreadable password, parked.', 2 )
+        hashed = MIGRATION_PARKED
+    end
+
+    dbExec( connection, 'UPDATE accounts SET password = ? WHERE id = ?', hashed, row.id )
+
+    local record = _G.Accounts.records[row.id]
+    if record then
+        record.password = hashed
+    end
+end
+
+if connection then
+    migrationTimer = setTimer( migrateLegacyPassword, MIGRATION_INTERVAL, 0 )
 end
 
 
 function addAccount( name, password, allowCaseVariations )
-    if type( name ) ~= 'string' or name == '' then return false end
-    if type( password ) ~= 'string' or password == '' then return false end
+    if type( name ) ~= 'string' or name == '' or #name > NAME_MAX_LENGTH then return false end
+    if type( password ) ~= 'string' or password == '' or #password > PASSWORD_MAX_LENGTH then return false end
+    if isReservedName( name ) then return false end
 
     if findAccountByName( name, allowCaseVariations == true ) then
         return false
     end
 
+    local hashed = hashPassword( password )
+    if not hashed then
+        return false
+    end
+
     dbExec( connection, 'INSERT INTO accounts ( account, password, ip, serial, data ) VALUES ( ?, ?, ?, ?, ? )',
         name,
-        encodePassword( password ), '', '', encodeData( { } )
+        hashed, '', '', encodeData( { } )
     )
     outputDebugString( 'Account registered successfully.', 3 )
     return true
@@ -132,7 +465,7 @@ function getAccount( name, password )
     end
 
     if password ~= nil then
-        if type( password ) ~= 'string' or decodePassword( account.password ) ~= password then
+        if type( password ) ~= 'string' or not verifyPassword( account, password ) then
             return false
         end
     end
@@ -145,21 +478,23 @@ function getAccountByID( id )
     if not id then return false end
 
     local result = dbPoll( dbQuery( connection, 'SELECT * FROM accounts WHERE id = ? LIMIT 1', id ), -1 )
-    return result and result[1] or false
+    return adopt( result and result[1] )
 end
 
 function getAccountID( account )
-    if not isAccountTable( account ) or account.guest then
+    local record = resolve( account )
+    if not record or record.guest then
         return false
     end
-    return account.id
+    return record.id
 end
 
 function getAccountName( account )
-    if not isAccountTable( account ) then
+    local record = resolve( account )
+    if not record then
         return false
     end
-    return account.account
+    return record.account
 end
 
 function getPlayerSerial ( player )
@@ -177,17 +512,19 @@ function getPlayerSerial ( player )
 end
 
 function getAccountIP( account )
-    if not isAccountTable( account ) or account.guest then
+    local record = resolve( account )
+    if not record or record.guest then
         return false
     end
-    return account.ip
+    return record.ip
 end
 
 function getAccountSerial( account )
-    if not isAccountTable( account ) or account.guest then
+    local record = resolve( account )
+    if not record or record.guest then
         return false
     end
-    return account.serial
+    return record.serial
 end
 
 function getAccountPlayer( account )
@@ -196,17 +533,19 @@ function getAccountPlayer( account )
     end
 
     if account.guest then
-        for player, guest in pairs( _G.Accounts.guests ) do
-            if guest == account and not _G.Accounts.logged[player] then
-                return player
-            end
+        local player = account.player
+        if isPlayerElement( player ) and not _G.Accounts.logged[player] then
+            return player
         end
         return false
     end
 
     for player, logged in pairs( _G.Accounts.logged ) do
-        if logged == account then
-            return player
+        if logged.id == account.id then
+            if isPlayerElement( player ) then
+                return player
+            end
+            _G.Accounts.logged[player] = nil
         end
     end
     return false
@@ -240,33 +579,36 @@ function getAccountsBySerial( serial )
 end
 
 function getAccountData( account, key )
-    if not isAccountTable( account ) or type( key ) ~= 'string' then
+    local record = resolve( account )
+    if not record or type( key ) ~= 'string' then
         return false
     end
 
-    if account.guest then
-        local value = account.data[key]
+    if record.guest then
+        local value = record.data[key]
         return value ~= nil and value or false
     end
 
-    local data = decodeData( account.data )
+    local data = decodeData( record.data )
     return data[key] ~= nil and data[key] or false
 end
 
 function getAllAccountData( account )
-    if not isAccountTable( account ) then
+    local record = resolve( account )
+    if not record then
         return false
     end
 
-    if account.guest then
-        return account.data
+    if record.guest then
+        return record.data
     end
 
-    return decodeData( account.data )
+    return decodeData( record.data )
 end
 
 function setAccountData( account, key, value )
-    if not isAccountTable( account ) or type( key ) ~= 'string' or not isValidDataValue( value ) then
+    local record = resolve( account )
+    if not record or type( key ) ~= 'string' or not isValidDataValue( value ) then
         return false
     end
 
@@ -274,15 +616,15 @@ function setAccountData( account, key, value )
         value = nil
     end
 
-    if account.guest then
-        account.data[key] = value
+    if record.guest then
+        record.data[key] = value
         return true
     end
 
-    local data = decodeData( account.data )
+    local data = decodeData( record.data )
     data[key] = value
-    account.data = encodeData( data )
-    dbExec( connection, 'UPDATE accounts SET data = ? WHERE id = ?', account.data, account.id )
+    record.data = encodeData( data )
+    dbExec( connection, 'UPDATE accounts SET data = ? WHERE id = ?', record.data, record.id )
 
     return true
 end
@@ -325,24 +667,31 @@ function logIn( player, account, password )
         return false
     end
 
-    if getAccountPlayer( account ) then
+    local record = getAccountByID( account.id )
+    if not record then
         return false
     end
 
-    if decodePassword( account.password ) ~= password then
+    if getAccountPlayer( record ) then
         return false
     end
 
-    local previousAccount = getPlayerAccount( player )
+    if not verifyPassword( record, password ) then
+        return false
+    end
 
-    account.ip = ( type( getPlayerIP ) == 'function' and getPlayerIP( player ) ) or ''
-    account.serial = ( type( getPlayerSerial ) == 'function' and getPlayerSerial( player ) ) or ''
-    dbExec( connection, 'UPDATE accounts SET ip = ?, serial = ? WHERE id = ?', account.ip, account.serial, account.id )
+    record.ip = ( type( getPlayerIP ) == 'function' and getPlayerIP( player ) ) or ''
+    record.serial = ( type( getPlayerSerial ) == 'function' and getPlayerSerial( player ) ) or ''
+    dbExec( connection, 'UPDATE accounts SET ip = ?, serial = ? WHERE id = ?', record.ip, record.serial, record.id )
     setElementData( player, 'logged', true )
-    _G.Accounts.logged[player] = account
-    setTimer( function( player, account )
-        triggerEvent( 'onPlayerLogin', player, player, account.account )
-    end, 2000, 1, player, account )
+    _G.Accounts.records[record.id] = record
+    _G.Accounts.logged[player] = record
+    setTimer( function( player, record )
+        if not isPlayerElement( player ) or _G.Accounts.logged[player] ~= record then
+            return
+        end
+        triggerEvent( 'onPlayerLogin', player, player, record.account )
+    end, 2000, 1, player, record )
     outputDebugString( 'Account logged in successfully.', 3 )
     return true
 end
@@ -356,6 +705,8 @@ function logOut( player )
     end
 
     _G.Accounts.logged[player] = nil
+    setElementData( player, 'logged', false )
+    releaseRecord( account.id )
 
     triggerEvent( 'onPlayerLogout', player, account, getPlayerAccount( player ) )
 
@@ -363,40 +714,49 @@ function logOut( player )
 end
 
 function removeAccount( account )
-    if not isAccountTable( account ) or account.guest then
+    local record = resolve( account )
+    if not record or record.guest then
         return false
     end
 
-    local player = getAccountPlayer( account )
+    local player = getAccountPlayer( record )
     if player then
         logOut( player )
     end
 
-    dbExec( connection, 'DELETE FROM accounts WHERE id = ?', account.id )
+    dbExec( connection, 'DELETE FROM accounts WHERE id = ?', record.id )
+    _G.Accounts.records[record.id] = nil
     return true
 end
 
 function setAccountName( account, name, allowCaseVariations )
-    if not isAccountTable( account ) or account.guest then return false end
-    if type( name ) ~= 'string' or name == '' then return false end
+    local record = resolve( account )
+    if not record or record.guest then return false end
+    if type( name ) ~= 'string' or name == '' or #name > NAME_MAX_LENGTH then return false end
+    if isReservedName( name ) then return false end
 
     local existing = findAccountByName( name, allowCaseVariations == true )
-    if existing and existing.id ~= account.id then
+    if existing and existing.id ~= record.id then
         return false
     end
 
-    dbExec( connection, 'UPDATE accounts SET account = ? WHERE id = ?', name, account.id )
-    account.account = name
+    dbExec( connection, 'UPDATE accounts SET account = ? WHERE id = ?', name, record.id )
+    record.account = name
     return true
 end
 
 function setAccountPassword( account, password )
-    if not isAccountTable( account ) or account.guest then return false end
-    if type( password ) ~= 'string' or password == '' then return false end
+    local record = resolve( account )
+    if not record or record.guest then return false end
+    if type( password ) ~= 'string' or password == '' or #password > PASSWORD_MAX_LENGTH then return false end
 
-    local encoded = encodePassword( password )
-    dbExec( connection, 'UPDATE accounts SET password = ? WHERE id = ?', encoded, account.id )
-    account.password = encoded
+    local hashed = hashPassword( password )
+    if not hashed then
+        return false
+    end
+
+    dbExec( connection, 'UPDATE accounts SET password = ? WHERE id = ?', hashed, record.id )
+    record.password = hashed
     return true
 end
 
@@ -456,16 +816,37 @@ function getPlayerMoney( player )
 end
 
 
-Server.getPlayerMoney = function( element )
-    return getPlayerMoney( element )
+Server.getPlayerMoney = function( )
+    return getPlayerMoney( client )
 end
 
 
+addEventHandler( 'onPlayerJoin', root, function( )
+    local player = source
+
+    setTimer( function( player )
+        if not isPlayerElement( player ) or _G.Accounts.logged[player] then
+            return
+        end
+
+        notify( player, Config.Text.WelcomeRegister )
+        notify( player, Config.Text.WelcomeLogin )
+    end, Config.WelcomeDelay, 1, player )
+end )
+
+
 addEventHandler( 'onPlayerQuit', root, function( )
-    setTimer( function( source )
-        logOut( source )
-        Accounts.guests[source] = nil
-    end, 300, 1, source )
+    local player = source
+
+    setTimer( function( player )
+        local account = _G.Accounts.logged[player]
+        logOut( player )
+        _G.Accounts.logged[player] = nil
+        _G.Accounts.guests[player] = nil
+        if account then
+            releaseRecord( account.id )
+        end
+    end, 300, 1, player )
 end )
 
 

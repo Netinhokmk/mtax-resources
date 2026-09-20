@@ -241,7 +241,11 @@ BuildResourceList = function()
 end
 
 local function bans()
-	return getResourceFromName('bans') and exports['bans'] or nil
+	local resource = findResource('bans')
+	if not resource then return nil end
+	local ok, state = pcall(getResourceState, resource)
+	if not ok or state ~= 'running' then return nil end
+	return exports['bans']
 end
 
 local function banDate(record)
@@ -867,6 +871,10 @@ function Handlers.banByField(admin, data)
 
 	local record = findBan(data.id)
 	if not record then return { ok = false, message = 'Registro não encontrado.' } end
+
+	if data.field ~= 'ip' and data.field ~= 'serial' then
+		return { ok = false, message = 'Campo de ban desconhecido.' }
+	end
 
 	local value = data.field == 'ip' and record.ip or record.serial
 	if value == '' then return { ok = false, message = 'Esse registro não tem ' .. tostring(data.field) .. '.' } end

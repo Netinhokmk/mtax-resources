@@ -1,5 +1,5 @@
 resource_name    = "mta"
-resource_version = "1.6.0"
+resource_version = "1.1.0"
 resource_author  = "MTAX:SA"
 
 resource_info = {

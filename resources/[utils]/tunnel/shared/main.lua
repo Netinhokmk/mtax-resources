@@ -76,6 +76,12 @@ _TUNNEL.TunnelResolve = function(TableValue, key)
           local rID = -1
 
           if callback then
+               if _TUNNEL.IsServer and (not isElement(player) or getElementType(player) ~= "player") then
+                    outputDebugString("[tunnel] "..tostring(Tname)..":"..tostring(Fname)..
+                         " was called with a callback and a non-player target; use a single player", 2)
+                    return false
+               end
+
                rID = Tid:gen()
                Tcallback[tostring(rID)] = { fn = callback, player = player }
           end

@@ -248,6 +248,14 @@ local function bans()
 	return exports['bans']
 end
 
+local function chat()
+	local resource = findResource('chat')
+	if not resource then return nil end
+	local ok, state = pcall(getResourceState, resource)
+	if not ok or state ~= 'running' then return nil end
+	return exports['chat']
+end
+
 local function banDate(record)
 	local ok, t = pcall(getRealTime, record.banTime)
 	if ok and type(t) == 'table' then
@@ -454,8 +462,9 @@ function Handlers.shoutPlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
 	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
 	ShoutTarget[admin] = target
-	if outputChatBox then
-		outputChatBox('Sua próxima mensagem será enviada como SHOUT para ' .. getPlayerName(target), admin)
+	local owner = chat()
+	if owner then
+		owner:outputChatBox('Sua próxima mensagem será enviada como SHOUT para ' .. getPlayerName(target), admin)
 	end
 	return { ok = true, message = 'Modo shout ativado para ' .. getPlayerName(target) }
 end
@@ -798,9 +807,10 @@ function Handlers.setFpsLimit(admin, data)
 end
 
 function Handlers.sendWelcomeMessage(admin, data)
-	if not outputChatBox then return { ok = false, message = 'outputChatBox indisponível nesta build.' } end
-	for _, player in ipairs(getElementsByType('player')) do
-		outputChatBox(tostring(data.message or ''), player)
+	local owner = chat()
+	if not owner then return { ok = false, message = 'O resource [mtax]/chat não está rodando.' } end
+	if not owner:outputChatBox(tostring(data.message or '')) then
+		return { ok = false, message = 'Não foi possível enviar a mensagem.' }
 	end
 	return { ok = true, message = 'Mensagem enviada.' }
 end
@@ -811,11 +821,10 @@ function Handlers.shutdownServer(admin, data)
 end
 
 function Handlers.clearChat(admin, data)
-	if not outputChatBox then return { ok = false, message = 'outputChatBox indisponível nesta build.' } end
-	for _, player in ipairs(getElementsByType('player')) do
-		for _ = 1, 30 do
-			outputChatBox('', player)
-		end
+	local owner = chat()
+	if not owner then return { ok = false, message = 'O resource [mtax]/chat não está rodando.' } end
+	if not owner:clearChat() then
+		return { ok = false, message = 'Não foi possível limpar o chat.' }
 	end
 	return { ok = true, message = 'Chat limpo.' }
 end
@@ -935,7 +944,8 @@ addEvent('mtax:admin:requestToggle', true)
 addEventHandler('mtax:admin:requestToggle', root, function()
 	local admin = client
 	if not isAdmin(admin) then
-		if outputChatBox then outputChatBox('Você não tem permissão para abrir o painel administrativo.', admin) end
+		local owner = chat()
+		if owner then owner:outputChatBox('Você não tem permissão para abrir o painel administrativo.', admin) end
 		return
 	end
 	local nowOpen = not PanelOpen[admin]

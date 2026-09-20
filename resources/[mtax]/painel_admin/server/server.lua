@@ -275,7 +275,7 @@ local function banRow(record)
 	}
 end
 
-local function banList()
+local function banList(match)
 	local owner = bans()
 	if not owner then return {} end
 
@@ -283,9 +283,12 @@ local function banList()
 	table.sort(records, function(a, b) return a.id > b.id end)
 
 	local list = {}
-	for index, record in ipairs(records) do
-		if index > 200 then break end
-		list[#list + 1] = banRow(record)
+	for _, record in ipairs(records) do
+		local row = banRow(record)
+		if not match or match(row) then
+			list[#list + 1] = row
+			if #list >= 200 then break end
+		end
 	end
 	return list
 end
@@ -833,13 +836,13 @@ function Handlers.searchBans(admin, data)
 	local field = data.type == 'IP' and 'ip' or (data.type == 'Serial' and 'serial' or 'name')
 	local query = tostring(data.query or ''):lower()
 
-	local list = {}
-	for _, row in ipairs(banList()) do
-		if query == '' or tostring(row[field]):lower():find(query, 1, true) then
-			list[#list + 1] = row
-		end
+	if query == '' then
+		return banList()
 	end
-	return list
+
+	return banList(function(row)
+		return tostring(row[field]):lower():find(query, 1, true) ~= nil
+	end)
 end
 
 function Handlers.banRowAction(admin, data)

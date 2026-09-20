@@ -333,7 +333,7 @@ local function importLegacyBans()
 
 	dbExec(DB, "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('bansImported', ?)", tostring(imported))
 	if imported > 0 then
-		outputDebugString('[mtax-admin] ' .. imported .. ' ban(s) importados para [mtax]/bans', 3)
+		outputDebugString('[mtax-admin] ' .. imported .. ' ban(s) imported into [mtax]/bans', 3)
 	end
 end
 
@@ -414,18 +414,18 @@ function Handlers.getActionLog() return ActionLog end
 
 function Handlers.moderatePlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 
 	local targetName = getPlayerName(target) or 'N/A'
 
 	if data.action == 'kick' then
-		kickPlayer(target, admin, 'Expulso pelo painel administrativo')
+		kickPlayer(target, admin, 'Kicked from the admin panel')
 	elseif data.action == 'ban' then
 		local owner = bans()
-		if not owner then return { ok = false, message = 'O resource [mtax]/bans não está rodando.' } end
+		if not owner then return { ok = false, message = 'The [mtax]/bans resource is not running.' } end
 
-		if not owner:banPlayer(target, true, false, true, admin, 'Banido pelo painel administrativo') then
-			return { ok = false, message = 'Não foi possível banir o jogador.' }
+		if not owner:banPlayer(target, true, false, true, admin, 'Banned from the admin panel') then
+			return { ok = false, message = 'Could not ban the player.' }
 		end
 		BroadcastBans()
 	elseif data.action == 'mute' then
@@ -433,137 +433,137 @@ function Handlers.moderatePlayer(admin, data)
 	elseif data.action == 'freeze' then
 		setElementFrozen(target, not isElementFrozen(target))
 	else
-		return { ok = false, message = 'Ação de moderação desconhecida.' }
+		return { ok = false, message = 'Unknown moderation action.' }
 	end
 
 	BroadcastPlayers()
-	return { ok = true, message = data.action .. ' aplicado a ' .. targetName }
+	return { ok = true, message = data.action .. ' applied to ' .. targetName }
 end
 
 function Handlers.spectatePlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	setCameraTarget(admin, target)
-	return { ok = true, message = 'Espectando ' .. getPlayerName(target) }
+	return { ok = true, message = 'Spectating ' .. getPlayerName(target) }
 end
 
 function Handlers.slapPlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local amount = tonumber(data.amount) or 20
 	setElementHealth(target, math.max(0, (getElementHealth(target) or 0) - amount))
 	local vx, vy, vz = getElementVelocity(target)
 	setElementVelocity(target, vx or 0, vy or 0, (vz or 0) + 0.3)
 	BroadcastPlayers()
-	return { ok = true, message = 'Slap de ' .. amount .. ' aplicado em ' .. getPlayerName(target) }
+	return { ok = true, message = 'Slap of ' .. amount .. ' applied to ' .. getPlayerName(target) }
 end
 
 function Handlers.shoutPlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	ShoutTarget[admin] = target
 	local owner = chat()
 	if owner then
-		owner:outputChatBox('Sua próxima mensagem será enviada como SHOUT para ' .. getPlayerName(target), admin)
+		owner:outputChatBox('Your next message will be sent as a SHOUT to ' .. getPlayerName(target), admin)
 	end
-	return { ok = true, message = 'Modo shout ativado para ' .. getPlayerName(target) }
+	return { ok = true, message = 'Shout mode enabled for ' .. getPlayerName(target) }
 end
 
 function Handlers.setPlayerStat(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local value = data.value
 
 	if data.stat == 'health' then
 		local n = tonumber(value)
-		if not n then return { ok = false, message = 'Valor inválido.' } end
+		if not n then return { ok = false, message = 'Invalid value.' } end
 		setElementHealth(target, math.max(0, math.min(100, n)))
 	elseif data.stat == 'armour' then
 		local n = tonumber(value)
-		if not n then return { ok = false, message = 'Valor inválido.' } end
+		if not n then return { ok = false, message = 'Invalid value.' } end
 		setPedArmor(target, math.max(0, math.min(100, n)))
 	elseif data.stat == 'skin' then
 		local n = tonumber(value)
-		if not n then return { ok = false, message = 'Skin ID inválido.' } end
+		if not n then return { ok = false, message = 'Invalid skin ID.' } end
 		setElementModel(target, n)
 	elseif data.stat == 'money' then
 		local n = tonumber(value)
-		if not n then return { ok = false, message = 'Valor inválido.' } end
+		if not n then return { ok = false, message = 'Invalid value.' } end
 		local callOk, result = pcall(function() return exports['accounts']:setPlayerMoney(target, math.max(0, n)) end)
-		if not callOk then return { ok = false, message = "Falha ao comunicar com o resource 'accounts' (está rodando?)." } end
-		if result == false then return { ok = false, message = 'Jogador está em uma conta guest — sem conta para salvar dinheiro.' } end
+		if not callOk then return { ok = false, message = "Could not reach the 'accounts' resource (is it running?)." } end
+		if result == false then return { ok = false, message = 'Player is on a guest account - there is no account to store money in.' } end
 	else
-		return { ok = false, message = 'Stat desconhecida.' }
+		return { ok = false, message = 'Unknown stat.' }
 	end
 
 	BroadcastPlayers()
-	return { ok = true, message = data.stat .. ' atualizado para ' .. getPlayerName(target) }
+	return { ok = true, message = data.stat .. ' updated for ' .. getPlayerName(target) }
 end
 
 function Handlers.resetPlayerStats(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	setElementHealth(target, 100)
 	setPedArmor(target, 0)
 	BroadcastPlayers()
-	return { ok = true, message = 'Stats resetados para ' .. getPlayerName(target) }
+	return { ok = true, message = 'Stats reset for ' .. getPlayerName(target) }
 end
 
 function Handlers.givePlayerWeapon(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local weaponId = tonumber(data.weapon)
-	if not weaponId or weaponId < 1 or weaponId > 46 then return { ok = false, message = 'Arma desconhecida.' } end
+	if not weaponId or weaponId < 1 or weaponId > 46 then return { ok = false, message = 'Unknown weapon.' } end
 	giveWeapon(target, weaponId, 250, true)
 	BroadcastPlayers()
-	return { ok = true, message = 'Arma entregue a ' .. getPlayerName(target) }
+	return { ok = true, message = 'Weapon given to ' .. getPlayerName(target) }
 end
 
 function Handlers.givePlayerVehicle(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local model = tonumber(data.model)
-	if not model or model < 400 or model > 611 then return { ok = false, message = 'Veículo desconhecido.' } end
+	if not model or model < 400 or model > 611 then return { ok = false, message = 'Unknown vehicle.' } end
 	local x, y, z = getElementPosition(target)
 	local vehicle = createVehicle(model, x + 3, y, z)
-	if not vehicle then return { ok = false, message = 'Falha ao criar o veículo.' } end
+	if not vehicle then return { ok = false, message = 'Failed to create the vehicle.' } end
 	warpPedIntoVehicle(target, vehicle)
 	BroadcastPlayers()
-	return { ok = true, message = 'Veículo entregue a ' .. getPlayerName(target) }
+	return { ok = true, message = 'Vehicle given to ' .. getPlayerName(target) }
 end
 
 function Handlers.givePlayerJetpack(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 	local wantJetpack = not isPedWearingJetpack(target)
 	if not setPedWearingJetpack(target, wantJetpack) then
-		return { ok = false, message = 'Não foi possível alternar o jetpack (jogador está em um veículo?).' }
+		return { ok = false, message = 'Could not toggle the jetpack (is the player in a vehicle?).' }
 	end
 	BroadcastPlayers()
-	return { ok = true, message = (wantJetpack and 'JetPack ativado para ' or 'JetPack removido de ') .. getPlayerName(target) }
+	return { ok = true, message = (wantJetpack and 'Jetpack enabled for ' or 'Jetpack removed from ') .. getPlayerName(target) }
 end
 
 function Handlers.warpToPlayer(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local x, y, z = getElementPosition(target)
 	setElementPosition(admin, x, y, z + 1, true)
-	return { ok = true, message = 'Você foi teleportado até ' .. getPlayerName(target) }
+	return { ok = true, message = 'You were teleported to ' .. getPlayerName(target) }
 end
 
 function Handlers.warpPlayerToMe(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local x, y, z = getElementPosition(admin)
 	setElementPosition(target, x, y, z + 1, true)
-	return { ok = true, message = getPlayerName(target) .. ' foi teleportado até você.' }
+	return { ok = true, message = getPlayerName(target) .. ' was teleported to you.' }
 end
 
 function Handlers.vehicleMaintenance(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target then return { ok = false, message = 'Player not found.' } end
 	local vehicle = getPedOccupiedVehicle(target)
-	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' não está em um veículo.' } end
+	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' is not in a vehicle.' } end
 
 	if data.action == 'repair' then
 		fixVehicle(vehicle)
@@ -572,11 +572,11 @@ function Handlers.vehicleMaintenance(admin, data)
 	elseif data.action == 'destroy' then
 		destroyElement(vehicle)
 	else
-		return { ok = false, message = 'Ação de veículo desconhecida.' }
+		return { ok = false, message = 'Unknown vehicle action.' }
 	end
 
 	BroadcastPlayers()
-	return { ok = true, message = data.action .. ' aplicado ao veículo de ' .. getPlayerName(target) }
+	return { ok = true, message = data.action .. ' applied to the vehicle of ' .. getPlayerName(target) }
 end
 
 local function buildVehicleCustomization(vehicle)
@@ -613,17 +613,17 @@ end
 
 function Handlers.getVehicleCustomization(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 	local vehicle = getPedOccupiedVehicle(target)
-	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' não está em um veículo.' } end
+	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' is not in a vehicle.' } end
 	return buildVehicleCustomization(vehicle)
 end
 
 function Handlers.vehicleCustomizeAction(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 	local vehicle = getPedOccupiedVehicle(target)
-	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' não está em um veículo.' } end
+	if not vehicle then return { ok = false, message = getPlayerName(target) .. ' is not in a vehicle.' } end
 
 	if data.action == 'setUpgrades' then
 		for slotKey, upgradeId in pairs(data.upgrades or {}) do
@@ -658,7 +658,7 @@ function Handlers.vehicleCustomizeAction(admin, data)
 		local r, g, b = tonumber(data.r), tonumber(data.g), tonumber(data.b)
 		if r and g and b then setVehicleHeadLightColor(vehicle, r, g, b) end
 	else
-		return { ok = false, message = 'Ação de customização desconhecida.' }
+		return { ok = false, message = 'Unknown customization action.' }
 	end
 
 	BroadcastPlayers()
@@ -667,9 +667,9 @@ end
 
 function Handlers.setVehicleDimension(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 	local dimension = tonumber(data.dimension)
-	if not dimension then return { ok = false, message = 'Dimensão inválida.' } end
+	if not dimension then return { ok = false, message = 'Invalid dimension.' } end
 
 	setElementDimension(target, dimension)
 
@@ -682,29 +682,29 @@ function Handlers.setVehicleDimension(admin, data)
 				setElementDimension(occupant, dimension)
 			end
 		end
-		return { ok = true, message = 'Dimensão definida para ' .. dimension .. ' (veículo e ocupantes incluídos).' }
+		return { ok = true, message = 'Dimension set to ' .. dimension .. ' (vehicle and occupants included).' }
 	end
 
-	return { ok = true, message = 'Dimensão definida para ' .. dimension }
+	return { ok = true, message = 'Dimension set to ' .. dimension }
 end
 
 function Handlers.teleportPlayerToInterior(admin, data)
 	local target = PlayerRegistryById[data.id]
-	if not target or not isElement(target) then return { ok = false, message = 'Jogador não encontrado.' } end
+	if not target or not isElement(target) then return { ok = false, message = 'Player not found.' } end
 	local x, y, z = tonumber(data.x), tonumber(data.y), tonumber(data.z)
 	local interior = tonumber(data.interior)
-	if not x or not y or not z or not interior then return { ok = false, message = 'Interior inválido.' } end
+	if not x or not y or not z or not interior then return { ok = false, message = 'Invalid interior.' } end
 	setElementInterior(target, interior)
 	setElementPosition(target, x, y, z)
 	BroadcastPlayers()
-	return { ok = true, message = getPlayerName(target) .. ' foi teleportado para o interior.' }
+	return { ok = true, message = getPlayerName(target) .. ' was teleported to the interior.' }
 end
 
 function Handlers.resourceLifecycle(admin, data)
 	local resourceElement = findResource(data.name)
 	if not resourceElement then
-		PushActionLog(tostring(data.name) .. ': ' .. tostring(data.action) .. ' → resource não encontrado')
-		return { ok = false, message = "Resource '" .. tostring(data.name) .. "' não encontrado." }
+		PushActionLog(tostring(data.name) .. ': ' .. tostring(data.action) .. ' → resource not found')
+		return { ok = false, message = "Resource '" .. tostring(data.name) .. "' not found." }
 	end
 
 	local ok, result
@@ -715,40 +715,40 @@ function Handlers.resourceLifecycle(admin, data)
 	elseif data.action == 'stop' then
 		ok, result = pcall(stopResource, resourceElement)
 	else
-		return { ok = false, message = 'Ação de resource desconhecida.' }
+		return { ok = false, message = 'Unknown resource action.' }
 	end
 
 	BroadcastResources()
 	if ok and result then
-		PushActionLog(data.name .. ': ' .. data.action .. ' → agendado por ' .. getPlayerName(admin))
-		return { ok = true, message = data.action .. ' agendado para ' .. data.name }
+		PushActionLog(data.name .. ': ' .. data.action .. ' → scheduled by ' .. getPlayerName(admin))
+		return { ok = true, message = data.action .. ' scheduled for ' .. data.name }
 	end
-	PushActionLog(data.name .. ': ' .. data.action .. ' → falhou')
-	return { ok = false, message = 'Falha ao ' .. data.action .. ' ' .. tostring(data.name) }
+	PushActionLog(data.name .. ': ' .. data.action .. ' → failed')
+	return { ok = false, message = 'Failed to ' .. data.action .. ' ' .. tostring(data.name) }
 end
 
 function Handlers.refreshResources(admin, data)
 	pcall(refreshResources)
 	BroadcastResources()
-	PushActionLog('Refresh list → atualizado por ' .. getPlayerName(admin))
-	return { ok = true, message = 'Lista de resources atualizada.' }
+	PushActionLog('Refresh list → refreshed by ' .. getPlayerName(admin))
+	return { ok = true, message = 'Resource list refreshed.' }
 end
 
 function Handlers.executeCommand(admin, data)
 	local command, args = tostring(data.command or ''):match('^(%S+)%s*(.*)$')
-	if not command then return { ok = false, message = 'Comando vazio.' } end
+	if not command then return { ok = false, message = 'Empty command.' } end
 
 	if data.scope == 'client' then
 		triggerClientEvent(admin, 'mtax:admin:runClientCommand', admin, command, args)
 		PushActionLog('[client] ' .. getPlayerName(admin) .. ': ' .. tostring(data.command))
-		return { ok = true, message = 'Enviado para o seu cliente.' }
+		return { ok = true, message = 'Sent to your client.' }
 	end
 
 	local ok, result = pcall(executeCommandHandler, command, admin, args)
-	local status = ok and (result and 'executado' or 'comando não encontrado') or 'erro'
+	local status = ok and (result and 'executed' or 'command not found') or 'error'
 	PushActionLog('[server] ' .. getPlayerName(admin) .. ': ' .. tostring(data.command) .. ' → ' .. status)
 	if not ok then return { ok = false, message = tostring(result) } end
-	return { ok = result == true, message = result and 'Executado.' or 'Comando não encontrado.' }
+	return { ok = result == true, message = result and 'Executed.' or 'Command not found.' }
 end
 
 function Handlers.setServerPassword(admin, data)
@@ -756,7 +756,7 @@ function Handlers.setServerPassword(admin, data)
 	setServerPassword(password)
 	dbExec(DB, "INSERT OR REPLACE INTO server_settings (key, value) VALUES ('password', ?)", password)
 	BroadcastServerSettings()
-	return { ok = true, message = 'Senha atualizada.' }
+	return { ok = true, message = 'Password updated.' }
 end
 
 function Handlers.setWeather(admin, data)
@@ -765,68 +765,68 @@ function Handlers.setWeather(admin, data)
 	if blended then setWeatherBlended(id) else setWeather(id) end
 	CurrentWeather = { id = id, blended = blended }
 	BroadcastServerSettings()
-	return { ok = true, message = 'Clima definido para ' .. id }
+	return { ok = true, message = 'Weather set to ' .. id }
 end
 
 function Handlers.setTime(admin, data)
 	local hour, minute = tostring(data.value or ''):match('^(%d+):(%d+)$')
-	if not hour then return { ok = false, message = 'Formato esperado HH:MM.' } end
+	if not hour then return { ok = false, message = 'Expected format HH:MM.' } end
 	setTime(tonumber(hour), tonumber(minute))
-	return { ok = true, message = 'Horário definido.' }
+	return { ok = true, message = 'Time set.' }
 end
 
 function Handlers.setGravity(admin, data)
 	local value = tonumber(data.value)
-	if not value then return { ok = false, message = 'Valor inválido.' } end
+	if not value then return { ok = false, message = 'Invalid value.' } end
 	setGravity(value)
-	return { ok = true, message = 'Gravidade definida.' }
+	return { ok = true, message = 'Gravity set.' }
 end
 
 function Handlers.setGameSpeed(admin, data)
 	local value = tonumber(data.value)
-	if not value then return { ok = false, message = 'Valor inválido.' } end
+	if not value then return { ok = false, message = 'Invalid value.' } end
 	setGameSpeed(value)
-	return { ok = true, message = 'Velocidade do jogo definida.' }
+	return { ok = true, message = 'Game speed set.' }
 end
 
 function Handlers.setWaveHeight(admin, data)
 	local value = tonumber(data.value)
-	if not value then return { ok = false, message = 'Valor inválido.' } end
+	if not value then return { ok = false, message = 'Invalid value.' } end
 	setWaveHeight(value)
-	return { ok = true, message = 'Altura das ondas definida.' }
+	return { ok = true, message = 'Wave height set.' }
 end
 
 function Handlers.setFpsLimit(admin, data)
 	local limit = tonumber(data.value)
-	if not limit then return { ok = false, message = 'Valor inválido.' } end
+	if not limit then return { ok = false, message = 'Invalid value.' } end
 	for _, player in ipairs(getElementsByType('player')) do
 		triggerClientEvent(player, 'mtax:admin:setFpsLimit', player, limit)
 	end
 
-	return { ok = true, message = 'FPS limit definido para ' .. limit }
+	return { ok = true, message = 'FPS limit set to ' .. limit }
 end
 
 function Handlers.sendWelcomeMessage(admin, data)
 	local owner = chat()
-	if not owner then return { ok = false, message = 'O resource [mtax]/chat não está rodando.' } end
+	if not owner then return { ok = false, message = 'The [mtax]/chat resource is not running.' } end
 	if not owner:outputChatBox(tostring(data.message or '')) then
-		return { ok = false, message = 'Não foi possível enviar a mensagem.' }
+		return { ok = false, message = 'Could not send the message.' }
 	end
-	return { ok = true, message = 'Mensagem enviada.' }
+	return { ok = true, message = 'Message sent.' }
 end
 
 function Handlers.shutdownServer(admin, data)
-	shutdown('Desligado pelo painel administrativo por ' .. getPlayerName(admin))
-	return { ok = true, message = 'Desligando o servidor...' }
+	shutdown('Shut down from the admin panel by ' .. getPlayerName(admin))
+	return { ok = true, message = 'Shutting down the server...' }
 end
 
 function Handlers.clearChat(admin, data)
 	local owner = chat()
-	if not owner then return { ok = false, message = 'O resource [mtax]/chat não está rodando.' } end
+	if not owner then return { ok = false, message = 'The [mtax]/chat resource is not running.' } end
 	if not owner:clearChat() then
-		return { ok = false, message = 'Não foi possível limpar o chat.' }
+		return { ok = false, message = 'Could not clear the chat.' }
 	end
-	return { ok = true, message = 'Chat limpo.' }
+	return { ok = true, message = 'Chat cleared.' }
 end
 
 function Handlers.searchBans(admin, data)
@@ -844,14 +844,14 @@ end
 
 function Handlers.banRowAction(admin, data)
 	local owner = bans()
-	if not owner then return { ok = false, message = 'O resource [mtax]/bans não está rodando.' } end
+	if not owner then return { ok = false, message = 'The [mtax]/bans resource is not running.' } end
 
 	local record = findBan(data.id)
-	if not record then return { ok = false, message = 'Registro de ban não encontrado.' } end
+	if not record then return { ok = false, message = 'Ban record not found.' } end
 
 	local row = banRow(record)
 	if data.action == 'details' then
-		return { ok = true, message = string.format('%s — IP %s — Serial %s — banido por %s em %s', row.name, row.ip, row.serial, row.by, row.date) }
+		return { ok = true, message = string.format('%s - IP %s - Serial %s - banned by %s on %s', row.name, row.ip, row.serial, row.by, row.date) }
 	elseif data.action == 'unban' then
 		owner:removeBan(record, admin)
 	elseif data.action == 'unbanIp' or data.action == 'unbanSerial' then
@@ -867,40 +867,40 @@ function Handlers.banRowAction(admin, data)
 			end
 		end
 	else
-		return { ok = false, message = 'Ação de ban desconhecida.' }
+		return { ok = false, message = 'Unknown ban action.' }
 	end
 
 	BroadcastBans()
-	return { ok = true, message = data.action .. ' aplicado.' }
+	return { ok = true, message = data.action .. ' applied.' }
 end
 
 function Handlers.banByField(admin, data)
 	local owner = bans()
-	if not owner then return { ok = false, message = 'O resource [mtax]/bans não está rodando.' } end
+	if not owner then return { ok = false, message = 'The [mtax]/bans resource is not running.' } end
 
 	local record = findBan(data.id)
-	if not record then return { ok = false, message = 'Registro não encontrado.' } end
+	if not record then return { ok = false, message = 'Record not found.' } end
 
 	if data.field ~= 'ip' and data.field ~= 'serial' then
-		return { ok = false, message = 'Campo de ban desconhecido.' }
+		return { ok = false, message = 'Unknown ban field.' }
 	end
 
 	local value = data.field == 'ip' and record.ip or record.serial
-	if value == '' then return { ok = false, message = 'Esse registro não tem ' .. tostring(data.field) .. '.' } end
+	if value == '' then return { ok = false, message = 'That record has no ' .. tostring(data.field) .. '.' } end
 
 	local theBan = owner:addBan(data.field == 'ip' and value or nil, nil, data.field == 'serial' and value or nil,
-		admin, 'Ban de ' .. tostring(data.field) .. ' pelo painel')
+		admin, 'Ban by ' .. tostring(data.field) .. ' from the admin panel')
 	if theBan and record.nick ~= '' then
 		owner:setBanNick(theBan, record.nick)
 	end
 
 	BroadcastBans()
-	return { ok = true, message = tostring(data.field) .. ' banido.' }
+	return { ok = true, message = tostring(data.field) .. ' banned.' }
 end
 
 function Handlers.refreshBans(admin, data)
 	BroadcastBans()
-	return { ok = true, message = 'Lista de bans atualizada.' }
+	return { ok = true, message = 'Ban list refreshed.' }
 end
 
 function Handlers.aclGroupAction(admin, data)
@@ -910,30 +910,30 @@ function Handlers.aclGroupAction(admin, data)
 	local ok, result
 
 	if action == 'createGroup' then
-		if not value or value == '' then return { ok = false, message = 'Nome do grupo é obrigatório.' } end
+		if not value or value == '' then return { ok = false, message = 'Group name is required.' } end
 		ok, result = pcall(function() return acls:aclCreateGroup(value) end)
 	elseif action == 'destroyGroup' then
-		if not group then return { ok = false, message = 'Nenhum grupo selecionado.' } end
+		if not group then return { ok = false, message = 'No group selected.' } end
 		ok, result = pcall(function() return acls:aclDestroyGroup(aclGroupHandle(group)) end)
 	elseif action == 'addObject' then
-		if not group then return { ok = false, message = 'Nenhum grupo selecionado.' } end
+		if not group then return { ok = false, message = 'No group selected.' } end
 		ok, result = pcall(function() return acls:aclGroupAddObject(aclGroupHandle(group), value) end)
 	elseif action == 'removeObject' then
-		if not group then return { ok = false, message = 'Nenhum grupo selecionado.' } end
+		if not group then return { ok = false, message = 'No group selected.' } end
 		ok, result = pcall(function() return acls:aclGroupRemoveObject(aclGroupHandle(group), value) end)
 	else
-		return { ok = false, message = 'Ação de ACL desconhecida.' }
+		return { ok = false, message = 'Unknown ACL action.' }
 	end
 
 	if not ok then
-		return { ok = false, message = "Falha ao comunicar com o resource 'acls' (está rodando?): " .. tostring(result) }
+		return { ok = false, message = "Could not reach the 'acls' resource (is it running?): " .. tostring(result) }
 	end
 	if result == false then
-		return { ok = false, message = action .. ' falhou — confira se o grupo envolvido existe.' }
+		return { ok = false, message = action .. ' failed - check that the group involved exists.' }
 	end
 
 	BroadcastAclGroups()
-	return { ok = true, message = action .. ' aplicado.' }
+	return { ok = true, message = action .. ' applied.' }
 end
 
 local function respond(admin, requestId, result)
@@ -945,7 +945,7 @@ addEventHandler('mtax:admin:requestToggle', root, function()
 	local admin = client
 	if not isAdmin(admin) then
 		local owner = chat()
-		if owner then owner:outputChatBox('Você não tem permissão para abrir o painel administrativo.', admin) end
+		if owner then owner:outputChatBox('You do not have permission to open the admin panel.', admin) end
 		return
 	end
 	local nowOpen = not PanelOpen[admin]
@@ -979,18 +979,18 @@ for _, action in ipairs(NUI_ACTIONS) do
 	addEventHandler(eventName, root, function(requestId, data)
 		local admin = client
 		if not isAdmin(admin) then
-			respond(admin, requestId, { ok = false, message = 'Sem permissão.' })
+			respond(admin, requestId, { ok = false, message = 'No permission.' })
 			return
 		end
 		local handler = Handlers[action]
 		if not handler then
-			respond(admin, requestId, { ok = false, message = 'Ação desconhecida: ' .. action })
+			respond(admin, requestId, { ok = false, message = 'Unknown action: ' .. action })
 			return
 		end
 		local ok, result = pcall(handler, admin, data or {})
 		if not ok then
-			outputDebugString('[mtax-admin] erro em ' .. action .. ': ' .. tostring(result))
-			respond(admin, requestId, { ok = false, message = 'Erro interno.' })
+			outputDebugString('[mtax-admin] error in ' .. action .. ': ' .. tostring(result))
+			respond(admin, requestId, { ok = false, message = 'Internal error.' })
 			return
 		end
 		respond(admin, requestId, result)
@@ -1001,7 +1001,7 @@ end
 
 local function logOnlineCount()
 	local online = #getElementsByType('player')
-	outputDebugString(online .. '/' .. getMaxPlayers() .. ' jogadores online')
+	outputDebugString(online .. '/' .. getMaxPlayers() .. ' players online')
 end
 
 addEventHandler('onPlayerJoin', root, function()

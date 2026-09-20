@@ -1,7 +1,8 @@
 _MTA_COMPAT = _MTA_COMPAT or {}
 
 local function bans()
-    if not getResourceFromName("bans") then
+    local resource = getResourceFromName("bans")
+    if not resource or getResourceState(resource) ~= "running" then
         _MTA_COMPAT.warnOnce("bans",
             "the [mtax]/bans resource is not running; no ban is recorded and nobody is refused at connect")
         return nil

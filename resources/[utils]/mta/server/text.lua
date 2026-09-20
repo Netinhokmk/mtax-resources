@@ -6,7 +6,8 @@ local list = _MTA_TEXT.list
 local indexOf = _MTA_TEXT.indexOf
 
 local function owner()
-    if not getResourceFromName("textdisplay") then
+    local resource = getResourceFromName("textdisplay")
+    if not resource or getResourceState(resource) ~= "running" then
         _MTA_COMPAT.warnOnce("textdisplay",
             "the [mtax]/textdisplay resource is not running; every text display call fails and nothing is drawn")
         return nil

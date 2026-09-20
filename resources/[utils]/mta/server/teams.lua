@@ -1,7 +1,8 @@
 _MTA_COMPAT = _MTA_COMPAT or {}
 
 local function teams()
-    if not getResourceFromName("teams") then
+    local resource = getResourceFromName("teams")
+    if not resource or getResourceState(resource) ~= "running" then
         _MTA_COMPAT.warnOnce("teams",
             "the [mtax]/teams resource is not running; team state, friendly fire and nametag colour are off")
         return nil

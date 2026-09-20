@@ -1,7 +1,8 @@
 _MTA_COMPAT = _MTA_COMPAT or {}
 
 local function areas()
-    if not getResourceFromName("radararea") then
+    local resource = getResourceFromName("radararea")
+    if not resource or getResourceState(resource) ~= "running" then
         _MTA_COMPAT.warnOnce("radararea",
             "the [mtax]/radararea resource is not running; no radar area is created and none is drawn")
         return nil

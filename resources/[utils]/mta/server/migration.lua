@@ -65,6 +65,8 @@ function _MTAX:BindKey(Player, Key, KeyState, Handler, ...)
         return false
     end
 
+    Key = Key:lower()
+
     self.Binds[Player] = self.Binds[Player] or {}
     self.Binds[Player][Key] = self.Binds[Player][Key] or {}
     self.Binds[Player][Key][KeyState] = { Handler = Handler, Args = { ... } }
@@ -77,6 +79,8 @@ function _MTAX:UnbindKey(Player, Key, KeyState, Handler)
     if not isElement(Player) or type(Key) ~= "string" then
         return false
     end
+
+    Key = Key:lower()
 
     if not self.Binds[Player] or not self.Binds[Player][Key] then
         return false
@@ -126,6 +130,8 @@ function _MTAX:CallbackBindKey(Player, Key, KeyState)
     if not Player or type(Key) ~= "string" or type(KeyState) ~= "string" then
         return
     end
+
+    Key = Key:lower()
 
     local Bind = self.Binds[Player] and self.Binds[Player][Key] and self.Binds[Player][Key][KeyState]
     if not Bind then
@@ -331,4 +337,11 @@ end
 ---@return boolean
 function clearChatBox(VisibleTo)
     return Main:Chat():clearChat(VisibleTo)
+end
+
+---@param VisibleTo Element|Element[]
+---@param Show boolean
+---@return boolean
+function showChat(VisibleTo, Show)
+    return Main:Chat():setChatVisible(Show, VisibleTo)
 end

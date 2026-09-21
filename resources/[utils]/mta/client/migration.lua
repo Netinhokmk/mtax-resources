@@ -34,6 +34,8 @@ function _MTAX:Chat()
 end
 
 function _MTAX:KeyPressed(Key, KeyState)
+    Key = Key:lower()
+
     triggerServerEvent("callbackBindKey:" .. self.Resource, localPlayer, Key, KeyState)
 end
 
@@ -42,6 +44,8 @@ function _MTAX:CommandCalled(CommandName, ...)
 end
 
 function _MTAX:RegisterBindKey(Key, KeyState)
+    Key = Key:lower()
+
     local Id = Key .. ":" .. KeyState
     if self.Binds[Id] then
         return
@@ -53,6 +57,8 @@ function _MTAX:RegisterBindKey(Key, KeyState)
 end
 
 function _MTAX:UnregisterBindKey(Key, KeyState)
+    Key = Key:lower()
+
     local Id = Key .. ":" .. KeyState
     if not self.Binds[Id] then
         return
@@ -104,4 +110,15 @@ end
 ---@return boolean
 function clearChatBox()
     return Main:Chat():clearChat()
+end
+
+---@param Show boolean
+---@return boolean
+function showChat(Show)
+    return Main:Chat():setChatVisible(Show)
+end
+
+---@return boolean
+function isChatVisible()
+    return Main:Chat():isChatVisible()
 end

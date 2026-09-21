@@ -1,23 +1,24 @@
-resource_name = "cpu monitor"
+resource_name    = "cpumonitor"
 resource_version = "1.0.0"
-resource_author = "MTAX"
+resource_author  = "MTAX"
 
-ui_page = 'web/build/index.html'
-
+resource_info = {
+    description = "MTAX - Sistema de monitoramento de consumo (CPU)",
+}
 
 shared_files = {
-    ":tunnel/shared/main.lua",
+    "config.lua",
 }
 
 client_files = {
-	"client/client.lua"
+    "client/main.lua",
 }
 
 server_files = {
-	"server/server.lua"
+    "server/main.lua",
 }
 
 files = {
-	'web/build/index.html',
-	'web/build/**/*'
+    "fonts/*.ttf",
+    "images/*.png",
 }

@@ -133,6 +133,7 @@ addCommandHandler( 'debug', function( )
     Server.isObjectInAcl( function( check )
         if check then
             Toggle( )
+            Server.setDebugVisible( nil, visible )
         end
     end)
 end)
@@ -216,6 +217,12 @@ addEventHandler( 'onClientDebugMessage', root, function( message, level, file, l
     addToHistory({ level = debugLevel[ tonumber( level ) ] or 'info', text = message, side = 'client', file = file, line = line })
 end)
 
-Client.onDebugMessage = function( message, level, file, line )
-    addToHistory({ level = debugLevel[ tonumber( level ) ] or 'info', text = message, side = 'server', file = file, line = line })
+Client.onDebugMessage = function( messages )
+    if type( messages ) ~= 'table' then
+        return
+    end
+    for i = 1, #messages do
+        local value = messages[ i ]
+        addToHistory({ level = debugLevel[ tonumber( value[ 2 ] ) ] or 'info', text = value[ 1 ], side = 'server', file = value[ 3 ], line = value[ 4 ] })
+    end
 end

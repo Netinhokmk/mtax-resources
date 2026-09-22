@@ -4,7 +4,7 @@ resource_author = "MTAX"
 
 
 shared_files = {
-    "shared/tunnel.lua",
+    ":tunnel/shared/main.lua",
 }
 
 client_files = {
